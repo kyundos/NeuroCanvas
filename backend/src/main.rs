@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
+    http::HeaderValue,
     http::StatusCode,
     routing::{delete, get, post},
     Json, Router,
@@ -12,7 +13,7 @@ use serde_json::Value;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::{fs, net::TcpListener};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Clone)]
 struct AppState {
@@ -74,6 +75,9 @@ struct ErrorResponse {
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
 
+    let frontend_url =
+        env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
+
     let database_url = resolve_database_url()?;
     let pool = PgPoolOptions::new()
         .max_connections(10)
@@ -96,6 +100,19 @@ async fn main() -> Result<()> {
         .parse::<u16>()
         .context("PORT must be a valid u16 number")?;
 
+    let cors = CorsLayer::new()
+        .allow_origin(
+            frontend_url
+                .parse::<HeaderValue>()
+                .expect("Cors URL not valid"),
+        )
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::DELETE,
+        ])
+        .allow_headers(Any);
+
     let app_state = Arc::new(config);
     let app = Router::new()
         .route("/health", get(health))
@@ -113,7 +130,7 @@ async fn main() -> Result<()> {
             delete(delete_sample_by_id),
         )
         .route("/api/datasets/stats", get(get_dataset_stats))
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .with_state(app_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -155,9 +172,7 @@ fn resolve_database_url() -> Result<String> {
         "local" => "DATABASE_URL_LOCAL",
         "docker" => "DATABASE_URL_DOCKER",
         other => {
-            anyhow::bail!(
-                "invalid DATABASE_TARGET value: {other} (expected 'local' or 'docker')"
-            )
+            anyhow::bail!("invalid DATABASE_TARGET value: {other} (expected 'local' or 'docker')")
         }
     };
 
@@ -389,10 +404,8 @@ fn ensure_authorized(
     headers: &HeaderMap,
     state: &Arc<AppState>,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    let encoded = BASE64_STANDARD.encode(format!(
-        "{}:{}",
-        state.admin_username, state.admin_password
-    ));
+    let encoded =
+        BASE64_STANDARD.encode(format!("{}:{}", state.admin_username, state.admin_password));
     let expected = format!("Basic {encoded}");
 
     let provided = headers
