@@ -1,0 +1,9 @@
+# Configs
+.env
+.cursorrules
+
+# Local caches and temporary files
+.cache/
+.cargo/
+.tmp/
+**/target/

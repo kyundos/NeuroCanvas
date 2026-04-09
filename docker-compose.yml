@@ -1,0 +1,50 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    working_dir: /app/frontend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app/frontend
+      - ./wasm-engine:/app/wasm-engine
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    working_dir: /app/backend
+    command: sh -c "cargo run"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend/public:/app/frontend/public:ro
+    env_file:
+      - .env
+    environment:
+      - DATABASE_TARGET=docker
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-neural_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
