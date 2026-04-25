@@ -90,21 +90,24 @@ function App() {
       try {
         setIsWasmReady(false);
         await init();
-        const modelResponse = await fetch(
-          `${apiBaseUrl}/model/${encodeURIComponent(modelVersion)}`,
-        );
+
         let jsonText = "";
-        if (modelResponse.ok) {
-          const payload = (await modelResponse.json()) as ModelApiResponse;
-          jsonText = JSON.stringify(payload.model);
-          setModelSource("backend");
-        } else if (modelResponse.status === 404) {
+        try {
+          const modelResponse = await fetch(
+            `${apiBaseUrl}/model/${encodeURIComponent(modelVersion)}`,
+          );
+          if (modelResponse.ok) {
+            const payload = (await modelResponse.json()) as ModelApiResponse;
+            jsonText = JSON.stringify(payload.model);
+            setModelSource("backend");
+          } else {
+            throw new Error(await readErrorMessage(modelResponse));
+          }
+        } catch {
           const localFallback = await fetch("/model.json");
           if (!localFallback.ok) throw new Error("model.json not found");
           jsonText = await localFallback.text();
           setModelSource("local-fallback");
-        } else {
-          throw new Error(await readErrorMessage(modelResponse));
         }
 
         engineRef.current = new NeuralEngine(jsonText);
